@@ -1,0 +1,366 @@
+---
+title: "Kill the Virus: Leveraging Supervised Machine Learning to Predict COVID-19 Vaccination Acceptance among U.S. Army Combat Aviation Brigade Personnel"
+author: "Sam Thompson"
+date: "May 12, 2021"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+bibliography: COVAX_bib.bib
+nocite: |
+  @RFWager, @HDBelloni, @AGStorm, @REDuflo, @sandwhich1
+---
+
+```{r Data Wrangling, include=FALSE, warning = FALSE}
+library(tidyverse)
+library(readxl)
+library(ggthemes)
+library(ggrepel)
+library(stargazer)
+library(kableExtra)
+
+#Import Data into RStudio
+filename <- "COVAX_deidentify"
+dat_external <- read_csv(filename)
+```
+
+### Introduction
+
+Members of the United States Armed Forces are no strangers to vaccination. In the name of medical readiness, Soldiers receive a litany of mandatory immunizations to ensure constant "deployability." As such, the Department of Defense's decision to make the COVID-19 vaccination voluntary for U.S. servicemembers presents both a significant departure from the norm and a unique opportunity to study uptake variation in an otherwise uniform population.
+
+To manage distribution of this voluntary vaccine, medical planners must first discern servicemembers' willingness to participate. This study explores uptake trends within one Combat Aviation Brigade of approximately three thousand Soldiers whose leaders conducted uniform polling to establish immunization consent. To the surprise of senior leaders, volunteerism among the unit's Soldiers languished at 41 percent.
+
+With the objective of maximizing vaccine uptake and thus preserving unit readiness amidst the COVID-19 pandemic, unit leadership sought a more nuanced understanding of variation underlying the decision to volunteer. Thus equipped, units would better direct medical professionals to inform reluctant servicemembers of vaccination risks and benefits. To be useful, however, the underlying data needed to be readily available to company commanders and require no further polling. In accordance with this mandate, I coupled Soldier responses with administrative information immediately accessible to all leaders within the organization (i.e., rank, age, sex, unit, and occupational specialty) and de-identified the data to preserve respondent privacy throughout analysis.
+
+The core mandate of this study was to empower unit leadership with easily interpretable tools that use immediately accessible information to gauge Soldier proclivity for vaccination. That said, the use of supervised machine learning algorithms to identify linear predictors bears broader relevance to management decisions. This is particularly true when leaders have access to highly dimensional data sets in which each observation  has many recorded characteristics. Rather than relying on intuition, leaders can leverage machine learning to identify the predictors of greatest consequence. In this way, irrespective of whether the targeted allocation of educational materials results in a significant increase in vaccination uptake, the prediction methodology explored here remains an important proof of concept.
+
+To identify predictors, I first partitioned the data into training and test sets, using the former to build models and the latter for assessing their efficacy. I then used the rpart package to construct a decision tree depicting which explanatory variables bear the most predictive power on the binary outcome of interest: whether a particular servicemember volunteered to receive the COVID-19 vaccine. To assess the stability of these predictions, I used the R package "randomForest" to train a predictive model that minimizes root mean squared error across an average of multiple decision trees. After calculating the relative importance of each variable in predicting volunteer status, I constructed a linear probability model featuring the three variables with the most predictive power: mission critical status, age, and whether the respondent is an officer.
+
+To assess the efficacy of this process in a model of admittedly low dimensionality, I then performed a logistic regression with all variables of interest. Contrasting the machine learning methodology with an iterative process, I performed a stepwise regression methodically removing variables from the logistic model to identify the optimal balance of model interpretability and predictive power.
+
+Accuracy, the number of correct predictions divided by the population total, constitutes a crude measure of predictive power. Within this metric lies a tradeoff between capturing either volunteers or non-volunteers. Sensitivity and specificity depict each model's ability to discern true positives and true negatives, respectively. To better illustrate this tradeoff, I plot the receiver operating characteristic (ROC) curve for each model and list the area under the curve (AUC) as another measure of model accuracy. This measure better compensates for skewed outcome distributions; however, the distribution of volunteers and non-volunteers is fairly even, so AUC does not differ significantly from standard accuracy. Because the fundamental objective of this model is to efficiently allocate training resources to Soldiers unlikely to otherwise volunteer for the vaccine and the cost of false negatives is low, specificity is the critical measure of model efficacy.
+
+With the highest specificity and an AUC comparable to more traditional regression analysis, random forest proves the optimal predictive model. Across multiple decision trees, the variables assessed as most important to this ensemble method were mission critical status, whether the respondent is an officer, and age. Equipped with this tool, unit leaders can leverage basic administrative information to discern a Soldier's likelihood to volunteer with 69.9 percent accuracy and 85.1 percent specificity.
+
+While able to broadly identify non-volunteers, the accuracy of this model is admittedly low. In constructing a model solely with information available to unit leadership, we exclude myriad personal characteristics with possible bearing on the vaccination decision. A Soldier's political affiliation, religious sentiment, and ethnicity are all conspicuously absent as explanatory variables. Moreover, despite employing clustered standard error to account for intra-unit correlation, influence networks, both formal and informal, likely account for much variation in vaccine uptake. Given the scope of the military's hierarchy, non-volunteers of higher rank likely have an outsized influence on subordinates. This should increase peer effects beyond those recorded in less hierarchical settings. Exploiting the inertia of inaction, middling naysayers can easily counteract vaccine advocacy among senior leaders. For the population in question, the polling required to discern such nuance would take too long to administer and its invasive nature could heighten vaccine hesitancy. The model's restriction to accessible explanatory variables imbues it with immediate relevance to the unit's vaccination effort.
+
+Ultimately, both the machine learning and regression methodologies resulted in predictive models that identified sub-groups least likely to volunteer with noteworthy consistency. That said, random forest did so with the highest specificity and an accuracy comparable to more traditional probability models. When leveraging data sets with greater dimensionality, supervised machine learning may prove a useful tool to pare the relevant variables for ease of leader interpretation. In this context, such methods enable leaders and medical professionals to better allocate educational materials and improve uptake among reluctant groups.
+
+### Methods
+
+I compiled this administrative data set with the fundamental purpose of coordinating vaccine distribution across the Brigade. Polling began on December 30, 2020, prior to higher headquarters' receipt of the vaccination in question. While unit leadership assured all volunteers that they would eventually receive the vaccine, supply shortages necessitated a phased approach. To better manage the gradual distribution of COVID-19 vaccines, the Department of Defense defined the following series of priority groups:
+
+-   Group A: Emergency Services Personnel
+-   Group B: Inpatient Healthcare and Support Personnel
+-   Group C: Out-Patient Medical Providers
+-   Group D: Mission Critical Personnel
+-   Group E: All Remaining Servicemembers
+
+The data set compiled for this study reflects polls taken early in the vaccination process. While some medical personnel affiliated with Groups A and C were vaccinated at the time of polling, most Soldiers asked had not yet been offered the vaccine. As its purpose was simply to anticipate vaccine demand and better allocate appointments, the poll was simple and quickly disseminated through unit command channels. Specifically, it consisted only of the Soldier's name, unit, priority group, local hospital, anticipated date of reassignment, and their unique Department of Defense identifier (DODID). This purely administrative poll revealed surprisingly low uptake among the unit's Soldiers and thereby challenged the core assumption underlying our public health drive: absent the usual mandate, Soldiers would still volunteer for vaccination. In response, unit leadership sought to better understand the variation in vaccine uptake and thereby target resources to encourage otherwise hesitant servicemembers.
+
+Given the immediacy of the threat, the possibility of imminent vaccine distribution, and the sensitive nature of the individual vaccination decision, I was unable to conduct more detailed polling. Instead, I leveraged basic administrative information available to commanders. Not only did this circumvent time constraints, but it also ensured that the model's ultimate indicators would be available to its users.
+
+In constructing a more robust data set, I used each Soldier's full name to merge the volunteer decision set with another containing occupational specialty, rank, age, sex, and company (a subset of the previously polled unit). As a numeric identifier, DODID would have been a preferrable key for this merge. Unfortunately, the latter data set lacked this information, so I leveraged the respondent's name as the only common variable. This was not a significant issue as the conjoined set remained sufficiently small to permit cleaning of discrepant values on a case-by-case basis. If replicating this methodology on a larger scale, however, using DODID as the key variable will greatly reduce time spent cleaning post-merge.
+
+To ensure Soldier privacy, I used the duawrangler package in R to replace each Soldier's name with a random character string while preserving an encrypted finder file to facilitate later merges. I likewise replaced unit names with numeric identifiers. It was critical to preserve this value in the data set, however, as social networks and leadership pose a significant possibility of intra-unit correlation. To compensate, the regression models used to predict volunteer probability all feature standard errors clustered at the unit level.
+
+As originally structured in the data set, rank is a discrete variable ascending from one (private) to 20 (colonel). As the nature of military promotions make age and rank largely colinear, I created four bins denoting officers, warrant officers, non-commissioned officers, and junior enlisted Soldiers. The variable age largely accounts for variation in rank within these structures while the shared experience of each corps presents a worthwhile source of variation.
+
+I created the dummy variable "critical" to identify those Soldiers designated by unit leadership as priority recipients of the COVID-19 vaccine. Specifically, critical Soldiers are those within Priority Groups A through D. Because this variable captures unit leaders directly exposed to command messaging on immunization and individuals whose receipt of the vaccine is an imminent possibility, I theorized it as a meaningful source of uptake variation.
+
+Supposing access to medical information to be predictor of vaccine uptake, I created a dummy variable to identify any occupational specialties related to the medical field. Identified simply by a numeric prefix of 67 or 68 on their occupational specialty, these individuals may not be actively working in a clinical setting. Absent advanced medical training, however, all identified will be immersed professionally in the Army Medical Department and thus subject to pronounced peer effects on the topic of vaccination.
+
+Finally, I created another dummy variable to capture Soldiers directly involved in aviation. The significant training required by Soldiers operating in and around aircraft constitutes a proxy for scientific literacy---and thus insulation from pervasive misinformation---beyond the crude measure of educational attainment constituted by their corps membership (officers and warrant officers require bachelor's degrees while non-commissioned officers and junior enlisted do not).
+
+The data thus cleaned and de-identified, Table 4 of Appendix A illustrates average values for each explanatory variable stratified by the outcome of interest: the COVID-19 vaccination decision. Uptake appears to generally increase with rank, age, and specialization.
+
+The rank-based uptake disparity is starkest at its extremes. Namely, officers constitute only 8.1 percent of the Brigade's personnel but account for fifteen percent of its vaccinations. Conversely, 42 percent of the Brigade's Soldiers are junior enlisted, but only 33 percent of its volunteers are thus ranked. This difference is less pronounced among Warrant and Non-Commissioned Officers (NCOs), but it perpetuates the broader officer-enlisted divide. As depicted in Table 1, the volunteer rate among officers is 73.1 percent while among enlisted uptake languishes at 29.9 percent.
+
+```{r COVAX Volunteer Rate by Corps, echo = FALSE}
+dat_ext_character <- dat_external %>% mutate(volunteer = recode(volunteer, `0` = "Non-Volunteer", `1` = "Volunteer"))
+unit_corps <- table(dat_ext_character$corps, dat_ext_character$volunteer)
+unit_corps_prop <- prop.table(unit_corps, margin = 1)
+unit_corps2 <- cbind(unit_corps, unit_corps_prop[,2])
+knitr::kable(unit_corps2, "simple",
+             col.name = c("No", "Yes", "Volunteer Rate"),
+             align = c("ccc"),
+             digits = 3,
+             caption = "Volunteers per Corps")
+```
+
+To better understand the interplay between age and rank, Figure 1 stratifies the population by both corps and volunteer status while plotting age along the y-axis. Except warrant officers, all corps are skewed toward younger ages. In all four, however, the median age among volunteers is higher than that of non-volunteers. This difference is most pronounced among Officers and NCOs where the age distribution among volunteers is smoother with significantly higher medians and upper quartiles.
+
+```{r COVAX Volunteers by Age and Corps, echo = FALSE, fig.align = "center", fig.cap = "Distribution of COVAX Volunteers by Age and Corps", out.width = '85%'}
+
+#Violin Plot Illustrating the distribution of volunteers by age and further stratified by Corps
+dat_ext_character %>%
+  ggplot(aes(volunteer, age)) +
+  geom_violin(bw = 4,  alpha = .2) +
+  geom_boxplot(width = .2) + 
+  facet_wrap(~corps) +
+  labs(x = "Volunteer Status", y = "Age") +
+  theme(legend.position = "none")
+```
+
+The Department of Defense priority groups are designed to rapidly vaccinate medical personnel and missions deemed essential by local command. For this population, Group C consists of outpatient clinical staff. While the smallest subset, these medical providers and technicians predictably enjoy the highest uptake. Group A encapsulates emergency service personnel and specifically references an air medical evacuation detachment in the study population. While medical in its mission, the composition of Group A is more heterogeneous as its pilots, maintenance personnel, and radio technicians are simply medical-adjacent. Low uptake was persistent in this unit despite multiple vaccination opportunities. Group D is even less uniform, and yet it enjoys the second highest vaccination rate. This may stem from a smoother distribution of rank among Group D personnel relative to Group E's skewed proportion of junior enlisted. This disparity is even more apparent when stratified by volunteer decision. Even still, Group A's reluctance remains surprising and likely stems from negative voices among its informal influence network. If echoed by flight paramedics in the formation, any vaccine hesitancy would likely prove doubly infectious among the medical-adjacent personnel of the medical evacuation company.
+
+```{r COVAX Volunteer Rate by Priority Group, echo = FALSE}
+
+unit_group <- table(dat_ext_character$group, dat_ext_character$volunteer)
+unit_group_prop <- prop.table(unit_group, margin = 1)
+unit_group2 <- cbind(unit_group, unit_group_prop[,2])
+knitr::kable(unit_group2, "simple",
+             col.name = c("No", "Yes", "Volunteer Rate"),
+             align = c("ccc"),
+             digits = 3,
+             caption = "Volunteers per Priority Group")
+
+```
+
+```{r COVAX Volunteers by Rank and Mission Critical Status, echo = FALSE, fig.align = "center", fig.cap = "Distribution of COVAX Volunteers by Rank and Mission Critical Status", out.width = '80%', fig.pos = 'h'}
+dat_ext_character %>%
+  ggplot(aes(volunteer, continuousrank), group_by(volunteer)) +
+  geom_violin(bw = 4, position = 'identity', aes(color = critical), alpha = .3) +
+  labs(x = "Volunteer Status", y = "Rank (1 = Private; 20 = Colonel)", color = "Mission Critical") +
+  theme_bw()
+
+```
+
+Having reviewed data available to unit commanders for apparent disparities between volunteer and non-volunteers, the total model is as follows:
+
+$$
+Volunteer_i= \alpha+\delta_1 Critical_i+\delta_2 Corps_i + \delta_3 Age_i + \delta_4Aviation_i + \delta_5Medical_i + \delta_6 Sex_i + \epsilon_i
+$$
+
+The binary variable volunteer captures each Soldier's decision to accept the COVID-19 vaccine and serves as the outcome of interest. As expressed above, "critical", "aviation", and "medical" are dummy variables similarly binary in their classification of each Soldier's specialty and priority group. "Corps" is the vector of rank bins delineating junior enlisted, non-commissioned officers, warrant officers, and officers.
+
+This model serves as the basis not only of my logistic regression, but also of my supervised machine learning algorithm. To preserve external validity, I used complete randomization to partition 75 percent of the data into a training set while the remaining 25 percent became the test set. I then trained the machine learning algorithm on the former while testing its predictive power on the latter. To avoid overfitting on the training set, the minimum split for any partition is 200 data points. Similarly, I restricted the depth of the decision tree to three layers to balance interpretability against accuracy.
+
+Beyond better managing the underlying variability of highly dimensional datasets, decisions trees lend themselves to easily interpretable graphical output and are thus a preferred tool for organizational decision-making. As an ensemble method, random forests aggregate multiple decision trees and preserve the most common nodes.
+
+Conversely, linear regression demands the imposition of a functional form. Straightforward in sample spaces with few explanatory variables, capturing underlying variation grows increasingly difficult as data increases in dimensionality. That said, the two methods need not be mutually exclusive. After calculating variable importance from the random forest model, I pared the logistic equation to only include the most consequential explanatory variables: mission critical status, age, and whether the respondent is an officer.
+
+To ascertain model efficacy, I compared each model's AUC as a balanced assessment of specificity and sensitivity. I weigh specificity more heavily as the cost of a false positive is greater than that of a false negative. In the latter, someone who would have volunteered for the vaccine regardless receives additional medical training. A false positive, however, will not be vaccinated yet may have been swayed if previously identified.
+
+### Results
+
+Ultimately, officer rank and designation as "mission critical" are consistent predictors of vaccine uptake across all machine learning algorithms and linear probability models. While age does not appear as a partition in the solitary decision tree, it appears as an important variable in the ensemble random forest and remains statistically significant across all logistic regressions.
+
+Generated with rpart using the aforementioned "total model," the decision tree is as follows:
+
+```{r Prepare Data for Machine Learning Analysis, echo = FALSE, include = FALSE}
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(pROC)
+library(ROCR)
+library(randomForest)
+
+# Divide the data set into a training and testing subsets
+sample_rows <- sample(nrow(dat_external), .75*nrow(dat_external))
+covax_train <- dat_external[sample_rows,]
+covax_test <- dat_external[-sample_rows,]
+
+```
+
+```{r Predictive Model Output, echo = FALSE, fig.align = "center", fig.cap = "Decision Tree Predicting Volunteer Probabilities", out.width = '80%'}
+
+volunteer_tree <- rpart(volunteer ~ critical + age + officer + warrant + nco + aviation + medical + sex,
+                        data = covax_train, method = "class", control = rpart.control(cp = 0.006, minsplit = 200, maxdepth = 3))
+rpart.plot(volunteer_tree, box.palette = "Grays")
+p_hat_tree <- predict(volunteer_tree, newdata = covax_test, type = "class")
+
+```
+
+```{r Decision Tree Confusion Matrix, echo = FALSE, include = FALSE}
+CM_tree <- confusionMatrix(p_hat_tree, factor(covax_test$volunteer), positive = "1")
+CM_tree
+tree_accuracy <- round(CM_tree$overall["Accuracy"], 3)
+tree_specificity <- round(CM_tree$byClass["Specificity"], 3)
+Tree_Assessment <- cbind(tree_accuracy, tree_specificity)
+```
+
+```{r Decision Tree Evaluation, echo = FALSE, include = FALSE, message = FALSE}
+auc <- performance(prediction(covax_test$volunteer, p_hat_tree), 'auc')
+auc_tree <- slot(auc, 'y.values')
+auc_tree <- round(auc_tree[[1]], 3)
+```
+
+Figure 3 illustrates the training set divided into a series of partitions and nodes. Each node contains three values: the estimated vaccination decision (with "1" signaling a volunteer), the percentage within each node that volunteered for the vaccine, and the sample percentage contained within the node. The node at the apex of the decision tree describes the training set prior to any partitions and predicts the average Soldier to be a non-volunteer. Subsequent partitions seek to divide the sample space into homogeneous subgroups of either volunteers or non-volunteers using the total model's predictors. While the visual output may be easily interpreted, it is subject to variation. To ascertain the stability of these predictors, I then applied the total model to the ensemble method, random forest. This algorithm aggregates many decision trees, each of which sample the training set with replacement. The final model features the most common nodes from the myriad decision trees for a prediction less over-fitted to the training set and thus more externally valid. To ascertain which variables bear the greatest predictive power in the random forest model, Table 3 lists all explanatory variables in order of descending importance. This value is determined by systematically removing each variable from the predictive model and calculating the consequent reduction in accuracy.
+
+```{r Random Forest, echo = FALSE, fig.align = "center", warning = FALSE, fig.cap = "Random Forest Variable Importance"}
+volunteer_forest <- randomForest(volunteer ~ critical + age + officer + warrant + nco + aviation + medical + sex, data = covax_train)
+var_importance <- round(varImp(volunteer_forest), 3)
+knitr::kable(var_importance, col.names = "Variable Importance",
+             caption = "Random Forest Variable Importance") %>%
+  row_spec(0, bold = TRUE) %>%
+  kable_styling(latex_options = "hold_position")
+  
+```
+
+```{r Random Forest Evaluation, echo = FALSE, include = FALSE}
+p_hat_forest <- predict(volunteer_forest, newdata = covax_test, type = "response")
+y_hat_forest <- ifelse(p_hat_forest > 0.5, 1, 0) %>% factor()
+
+CM_forest <- confusionMatrix(y_hat_forest, factor(covax_test$volunteer), positive = "1")
+CM_forest
+forest_accuracy <- round(CM_forest$overall["Accuracy"], 3)
+forest_specificity <- round(CM_forest$byClass["Specificity"], 3)
+
+ROC_forest <- roc(covax_test$volunteer, p_hat_forest)
+auc_forest <- round(auc(ROC_forest), 3)
+```
+
+The series of linear probability models depicted in Appendix B, Table 5 not only confirm the aforementioned machine learning predictors themselves, but also affirm the use of machine learning to pare models of higher dimensionality to their primary explanatory variables. The "Total Model" mirrors the variables input into the two supervised machine learning algorithms and resembles the random forest in highlighting the same three predictors as statistically significant: mission critical status, age, and officer rank.
+
+Similar to the process by which random forest determines variable importance, a stepwise regression tests a cascading series of models, systematically removing variables until it achieves the optimal balance of fit and parameter number. The statistically significant variables from the total, logit model remain so here, but the dummy variables "warrant" and "nco" are excluded. This result echoes the random forest model where both variables are listed as least important.
+
+Further illustrating the possibility of coupling machine learning methodologies with more traditional regression, the "Tree Model" includes only the three explanatory variables deemed most important by the random forest algorithm. Again, a Soldier's mission critical designation, age, and officer rank all prove consistent predictors of their vaccination decision significant at a 99 percent confidence level.
+
+In restricting the explanatory variables to those immediately accessible to unit leadership, these models are prone to specification error in the form of omitted variable bias. Partisan and religious affiliation likely confound these vaccination predictions but their correlation with the included explanatory variables is dubious. Given the military's hierarchical nature, unit leadership likely bears significant influence on the individual vaccination decision. Moreover, informal networks are more difficult to model than the formal leadership hierarchy, but likely account for similar peer effects. To compensate for either manifestation of intra-unit correlation, all three linear probability models depicted in Table 5 feature standard errors clustered at the company level.
+
+Additionally, vaccine acceptance may rise as the possibility of immunization increases. Given the slow distribution of vaccines among average Soldiers, the question of volunteering may appear abstract until immediately available. As vaccine wait-time is correlated with Priority Group, time inconsistent preferences would serve as a source of endogenous variation. That said, polling responses proved consistent throughout the vaccination process despite significant command emphasis placed on vaccination as part of the broader fight against COVID-19. For this reason, mission critical status should remain an unbiased predictor of vaccine uptake.
+
+These models all bear sufficient predictive power to imbue leaders with information critical to the allocation of scarce medical resources. As the cost of a false negative (a predicted non-volunteer who decides to accept the vaccination) is lower than a false positive, specificity is the paramount metric in comparing model efficacy. Here the machine learning algorithms rank highest. Weighing this metric against standard accuracy and AUC, random forest proves the optimal model for efficiently predicting non-volunteers. That said, as can be seen in Table 6 of Appendix C, all the above models score similarly across these three metrics. This point is again evident when considering the overlay of Model ROC curves in Figure 4. With the conspicuous exception of the decision tree model, all predictive methods closely track one another in the tradeoff between specificity and sensitivity. This stems from the current data's low dimensionality, and I anticipate divergence in favor of ensemble machine learning should more explanatory variables be included in future models.
+
+```{r Prediction using Logistic Regression, echo = FALSE, include = FALSE}
+#Logistic Regression using all Explanatory Variables
+log_total_model <- glm(volunteer ~ critical + age + officer + warrant + nco + aviation + medical + sex, data = covax_train, family = "binomial")
+p_hat_logit_total <- predict(log_total_model, newdata = covax_test, type = "response")
+y_hat_logit_total <- ifelse(p_hat_logit_total > 0.5, 1, 0) %>% factor()
+
+CM_log_total <- confusionMatrix(y_hat_logit_total, factor(covax_test$volunteer), positive = "1")
+total_accuracy <- round(CM_log_total$overall["Accuracy"], 3)
+total_specificity <- round(CM_log_total$byClass["Specificity"], 3)
+
+ROC_logit_total <- roc(covax_test$volunteer, p_hat_logit_total)
+auc_total <- round(auc(ROC_logit_total), 3)
+
+#Accounting for intra-company correlation through Cluster Robust Standard Errors
+library(sandwich)
+library(lmtest)
+log_total_clust <- coeftest(log_total_model, vcov = vcovCL, cluster = ~unit_code)
+
+##Stepwise Logarithmic Regression
+null_model <- glm(volunteer ~ 1, data = covax_train, family = "binomial")
+step_model <- step(null_model, scope = list(lower = null_model, upper = log_total_model), direction = "both")
+
+p_hat_step <- predict(step_model, newdata = covax_test, type = "response")
+y_hat_step <- ifelse(p_hat_step > 0.5, 1, 0) %>% factor()
+
+CM_step <- confusionMatrix(y_hat_step, factor(covax_test$volunteer), positive = "1")
+step_accuracy <- round(CM_step$overall["Accuracy"], 3)
+step_specificity <- round(CM_step$byClass["Specificity"], 3)
+
+ROC_step <- roc(covax_test$volunteer, p_hat_step)
+auc_step <- round(auc(ROC_step), 3)
+
+step_model_clust <- coeftest(step_model, vcov = vcovCL, cluster = ~unit_code)
+
+#Logistic Regression using Random Forest Variables of Importance Greater than 20 (Equivalent to Decision Tree)
+log_tree_model <- glm(volunteer ~ critical + age + officer, data = covax_train, family = "binomial")
+
+#Despite identifyng the probability of being a volunteer as 0.387, I preserve 0.5 as the inflection point to skew the model toward specificity
+p_hat_tree_logit <- predict(log_tree_model, newdata = covax_test, type = "response")
+y_hat_tree_logit <- ifelse(p_hat_tree_logit > 0.5, 1, 0) %>% factor()
+
+CM_tree_log <- confusionMatrix(y_hat_tree_logit, factor(covax_test$volunteer), positive = "1")
+tree_log_accuracy <- round(CM_tree_log$overall["Accuracy"], 3)
+tree_log_specificity <- round(CM_tree_log$byClass["Specificity"], 3)
+
+ROC_tree_logit <- roc(covax_test$volunteer, p_hat_tree_logit)
+auc_tree_logit <- round(auc(ROC_tree_logit), 3)
+
+log_tree_clust <- coeftest(log_tree_model, vcov = vcovCL, cluster = ~unit_code)
+
+```
+
+
+### Conclusion
+
+The distribution of a voluntary vaccine provides not only a unique opportunity to study uptake variation, but also to explore predictive tools that leaders can use to anticipate demand and efficiently allocate resources to shape public health outcomes. Albeit by a slim margin, the supervised machine learning algorithm random forest proved most effective in predicting non-volunteers in our test set. Using immediately available predictors, commanders can anticipate subsets of their formation more likely to hesitate when considering vaccination and can re-allocate medical professionals to directly address questions or concerns.
+
+Linear regression necessitates the imposition of functional form. As data increases in dimensionality, such restrictive models may fail to capture underlying variation. Heteroskedasticity undermines causal inference and thus limits predictive power beyond the immediate circumstances of one's sample. Machine learning, however, provides regularization techniques to uncover mechanisms underlying highly dimensional data and thereby increases external validity. While the current scope of this data set bears low dimensionality, this methodology is increasingly relevant as leaders gain access to larger data sets and seek to better understand their personnel.
+
+At present, the low dimensionality of available data limits my models' predictive power. While I mitigate the risk of intra-unit correlation confounding my predictors by clustering standard error at the unit level, the influence of social networks, both formal and informal, constitute an important source of variation worth exploring. Likewise, personal characteristics such as religious and partisan affiliations likely account for variation in COVID-19 vaccine uptake but are beyond the reach of administrative data accessible to commanders. Despite these limitations, the model's simplicity ensures easy interpretation, and its relatively high specificity captures most non-volunteers. Moreover, the methodology itself may prove useful when distilling much larger data sets for leader use.
+
+In the months since initial polling, the unit's strategy to increase vaccine uptake has been twofold. First, we disseminated educational material through trusted networks of medical professionals and further advocated immunization through formal command channels. To determine the efficacy of this campaign, the preferred course of action would have been a phased introduction of such educational materials to a random sample of units. The use of companies as the unit of randomization would limit spillover effects while preserving sample size. Unfortunately, time constraints and a relatively small population precluded a more deliberate attempt to measure the campaign's efficacy. Should other units replicate this approach, deliberately measuring education outcomes should be considered a necessary continuation of the predictive models.
+
+Second, a windfall of COVID-19 vaccines enabled units to shift from gradual immunization campaigns to mass vaccine drives. This paradigm shift allowed leaders to alter the choice architecture from "opting-in" to "opting-out" of vaccinations. Irrespective of previously expressed vaccination decisions, all Soldiers attended mass vaccine drives and formally articulated their preferences on screening forms. This not only disrupted peer effects by placing nay-sayers in line with hundreds of other Soldiers seeking vaccination, but it also leveraged the sunk-cost fallacy as the need to wait in line to submit one's declination appeared to lead some to receive the immunization. Unfortunately, this evidence is purely anecdotal in the absence of a deliberate experimental design. Choice architecture in a military context demands further study. The lingering disparity in vaccine acceptance among senior and more junior servicemembers makes dubious the traditional power of example. Choice architecture, however, provides a mechanism by which leaders can influence outcomes while avoiding unseemly direct influence in otherwise sensitive matters.
+
+While this study directly explores variation in vaccine uptake among military formations, it ultimately examines the use of machine learning algorithms to empower leaders. As commanders gain access to ever-larger data sets, the use of machine learning to draw nuanced insights can facilitate a more efficient allocation of resources. Opportunities for greater research abound at the nexus of data science and leadership.
+
+### References
+<div id="refs"></div>
+
+\newpage
+### Appendix A: Summary Statistics
+
+```{r Vaccination Decision Summary Statistics, echo = FALSE, message = FALSE, warning = FALSE}
+library(table1)
+label(dat_ext_character$officer) <- "Officer"
+label(dat_ext_character$warrant) <- "Warrant Officer"
+label(dat_ext_character$nco) <- "NCO"
+label(dat_ext_character$enlisted) <- "Enlisted"
+label(dat_ext_character$age) <- "Age"
+label(dat_ext_character$sex) <- "Sex"
+label(dat_ext_character$medical) <- "Medical"
+label(dat_ext_character$aviation) <- "Aviation"
+sumstats <- table1(~ officer + warrant + nco + enlisted + age + sex + medical + aviation | volunteer,
+       data = dat_ext_character,
+       overall = FALSE,
+       caption = "Summary Statistics Regarding Soldier Vaccination Decisions",
+       footnote = "Discrete Variables = Number (Percent of Total); Continuous Variables = Mean (SD)")
+t1kable(sumstats) %>%
+  kable_styling(latex_options = "hold_position")
+```
+
+\newpage
+### Appendix B: Regression Results
+
+```{r Regression Output, results = 'asis', echo = FALSE, message = FALSE}
+stargazer(log_total_clust, step_model_clust, log_tree_clust,
+          title = "Logistic Regression Results",
+          dep.var.caption = "Effect on Vaccine Uptake",
+          column.labels = c("Total Model", "Stepwise Model", "Tree Model"),
+          covariate.labels = c("Mission Critical", "Age", "Officer", "Warrant Officer", "NCO", "Aviation Specialty", "Medical Specialty", "Sex"),
+          add.lines = list(c("Clustered SE", "Yes", "Yes", "Yes"),
+                           c("Observations (Training Set)", "1,932", "1,932", "1,932")),
+          header = FALSE)
+```
+
+\newpage
+### Appendix C: Prediction Model Comparison
+
+```{r ROC Comparison, echo = FALSE, message = FALSE, fig.cap = "Visual Depiction of Prediction Model Accuracy as a Tradeoff between Sensitivity and Specificity", fig.align = 'center'}
+##Compare ROC Plots for Myriad Prediction Models
+preds_list <- list(p_hat_tree, p_hat_forest, p_hat_logit_total, p_hat_tree_logit, p_hat_step)
+
+# List of actual values (same for all)
+m <- length(preds_list)
+actuals_list <- rep(list(covax_test$volunteer), m)
+
+# Plot the ROC curves
+pred <- prediction(preds_list, actuals_list)
+rocs <- performance(pred, "tpr", "fpr")
+plot(rocs, col = as.list(1:m), main = "ROC Curves", xlab = "1 - Specificity", ylab = "Sensitivity")
+legend(x = "bottomright", 
+       legend = c("Decision Tree","Random Forest", "Decision Tree Logit", "Total Logit", "Stepwise Logit"),
+       fill = 1:m)
+
+```
+
+```{r Accuracy Comparison, echo = FALSE, message = FALSE, warning = FALSE}
+#Chart Clearly Comparing AUCs
+Model <- c("Random Forest", "Stepwise Logit", "Total Logit", "Tree Logit", "Decision Tree")
+Accuracy <- c(forest_accuracy, step_accuracy, total_accuracy, tree_log_accuracy, tree_accuracy)
+Specificity <-c(forest_specificity, step_specificity, total_specificity, tree_log_specificity, tree_specificity)
+AUC_Assessment <- rbind(auc_forest, auc_step, auc_total, auc_tree_logit, auc_tree)
+knitr::kable(cbind(Model, Accuracy, Specificity, AUC_Assessment), 
+             col.names = c("Model", "Accuracy", "Specificity", "Area Under Curve"),
+             caption = "Prediction Model Comparison",
+             row.names = FALSE) %>%
+  row_spec(0, bold = TRUE) %>%
+  kable_styling(latex_options = "hold_position")
+```
