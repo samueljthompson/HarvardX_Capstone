@@ -1,16 +1,56 @@
+###############################
+## PREPARE R STUDIO AND DATA ##
+###############################
+
+if(!require(tidyverse))install.packages("tidyverse")
+if(!require(ggthemes))install.packages("ggthemes")
+if(!require(ggrepel))install.packages("ggrepel")
+if(!require(stargazer))install.packages("stargazer")
+if(!require(kableExtra))install.packages("kableExtra")
+if(!require(rpart))install.packages("rpart")
+if(!require(rpart.plot))install.packages("rpart.plot")
+if(!require(caret))install.packages("caret")
+if(!require(pROC))install.packages("pROC")
+if(!require(ROCR))install.packages("ROCR")
+if(!require(randomForest))install.packages("randomForest")
+
 library(tidyverse)
-library(readxl)
 library(ggthemes)
 library(ggrepel)
 library(stargazer)
 library(kableExtra)
 
 #Import Data
-filename <- "COVAX_deidentify"
-dat_external <- read_csv(filename)
+tempfile()
+tmp_filename <- tempfile()
+download.file("https://raw.github.com/samueljthompson/HarvardX_Capstone/master/COVAX_deidentify", tmp_filename)
+dat_external <- read.csv(tmp_filename)
+file.remove(tmp_filename)
+
+###############################
+## EXPLORATORY DATA ANALYSIS ##
+###############################
+
+#Summary Statistics
+dat_ext_character <- dat_external %>% mutate(volunteer = recode(volunteer, `0` = "Non-Volunteer", `1` = "Volunteer"))
+library(table1)
+label(dat_ext_character$officer) <- "Officer"
+label(dat_ext_character$warrant) <- "Warrant Officer"
+label(dat_ext_character$nco) <- "NCO"
+label(dat_ext_character$enlisted) <- "Enlisted"
+label(dat_ext_character$age) <- "Age"
+label(dat_ext_character$sex) <- "Sex"
+label(dat_ext_character$medical) <- "Medical"
+label(dat_ext_character$aviation) <- "Aviation"
+sumstats <- table1(~ officer + warrant + nco + enlisted + age + sex + medical + aviation | volunteer,
+                   data = dat_ext_character,
+                   overall = FALSE,
+                   caption = "Summary Statistics Regarding Soldier Vaccination Decisions",
+                   footnote = "Discrete Variables = Number (Percent of Total); Continuous Variables = Mean (SD)")
+t1kable(sumstats) %>%
+  kable_styling(latex_options = "hold_position")
 
 #Chart Illustrating Volunteer Rate per Corps
-dat_ext_character <- dat_external %>% mutate(volunteer = recode(volunteer, `0` = "Non-Volunteer", `1` = "Volunteer"))
 unit_corps <- table(dat_ext_character$corps, dat_ext_character$volunteer)
 unit_corps_prop <- prop.table(unit_corps, margin = 1)
 unit_corps2 <- cbind(unit_corps, unit_corps_prop[,2])
@@ -24,7 +64,7 @@ knitr::kable(unit_corps2, "simple",
 dat_ext_character %>%
   ggplot(aes(volunteer, age)) +
   geom_violin(bw = 4,  alpha = .2) +
-  geom_boxplot(width = .2) + 
+  geom_boxplot(width = .2, outlier.alpha = FALSE) + 
   facet_wrap(~corps) +
   labs(x = "Volunteer Status", y = "Age") +
   theme(legend.position = "none")
@@ -46,6 +86,10 @@ dat_ext_character %>%
   labs(x = "Volunteer Status", y = "Rank (1 = Private; 20 = Colonel)", color = "Mission Critical") +
   theme_bw()
 
+####################
+## MODEL TRAINING ##
+####################
+
 library(rpart)
 library(rpart.plot)
 library(caret)
@@ -58,7 +102,9 @@ sample_rows <- sample(nrow(dat_external), .75*nrow(dat_external))
 covax_train <- dat_external[sample_rows,]
 covax_test <- dat_external[-sample_rows,]
 
-#Decision Tree
+## DECISION TREE ##
+###################
+
 volunteer_tree <- rpart(volunteer ~ critical + age + officer + warrant + nco + aviation + medical + sex,
                         data = covax_train, method = "class", control = rpart.control(cp = 0.006, minsplit = 200, maxdepth = 3))
 rpart.plot(volunteer_tree, box.palette = "Grays")
@@ -73,7 +119,9 @@ auc <- performance(prediction(covax_test$volunteer, p_hat_tree), 'auc')
 auc_tree <- slot(auc, 'y.values')
 auc_tree <- round(auc_tree[[1]], 3)
 
-#Random Forest
+## RANDOM FOREST ##  
+###################
+
 volunteer_forest <- randomForest(volunteer ~ critical + age + officer + warrant + nco + aviation + medical + sex, data = covax_train)
 var_importance <- round(varImp(volunteer_forest), 3)
 knitr::kable(var_importance, col.names = "Variable Importance",
@@ -92,7 +140,9 @@ forest_specificity <- round(CM_forest$byClass["Specificity"], 3)
 ROC_forest <- roc(covax_test$volunteer, p_hat_forest)
 auc_forest <- round(auc(ROC_forest), 3)
 
-#Logistic Regression using all Explanatory Variables
+## TOTAL LOGIT ##
+#################
+
 log_total_model <- glm(volunteer ~ critical + age + officer + warrant + nco + aviation + medical + sex, data = covax_train, family = "binomial")
 p_hat_logit_total <- predict(log_total_model, newdata = covax_test, type = "response")
 y_hat_logit_total <- ifelse(p_hat_logit_total > 0.5, 1, 0) %>% factor()
@@ -109,7 +159,9 @@ library(sandwich)
 library(lmtest)
 log_total_clust <- coeftest(log_total_model, vcov = vcovCL, cluster = ~unit_code)
 
-##Stepwise Logarithmic Regression
+## STEPWISE LOGIT ##
+####################
+
 null_model <- glm(volunteer ~ 1, data = covax_train, family = "binomial")
 step_model <- step(null_model, scope = list(lower = null_model, upper = log_total_model), direction = "both")
 
@@ -124,6 +176,9 @@ ROC_step <- roc(covax_test$volunteer, p_hat_step)
 auc_step <- round(auc(ROC_step), 3)
 
 step_model_clust <- coeftest(step_model, vcov = vcovCL, cluster = ~unit_code)
+
+## RANDOM FOREST REGULARIZED LOGIT ##
+#####################################
 
 #Logistic Regression using Random Forest Variables of Importance Greater than 20 (Equivalent to Decision Tree)
 log_tree_model <- glm(volunteer ~ critical + age + officer, data = covax_train, family = "binomial")
@@ -141,23 +196,9 @@ auc_tree_logit <- round(auc(ROC_tree_logit), 3)
 
 log_tree_clust <- coeftest(log_tree_model, vcov = vcovCL, cluster = ~unit_code)
 
-#Summary Statistics
-library(table1)
-label(dat_ext_character$officer) <- "Officer"
-label(dat_ext_character$warrant) <- "Warrant Officer"
-label(dat_ext_character$nco) <- "NCO"
-label(dat_ext_character$enlisted) <- "Enlisted"
-label(dat_ext_character$age) <- "Age"
-label(dat_ext_character$sex) <- "Sex"
-label(dat_ext_character$medical) <- "Medical"
-label(dat_ext_character$aviation) <- "Aviation"
-sumstats <- table1(~ officer + warrant + nco + enlisted + age + sex + medical + aviation | volunteer,
-                   data = dat_ext_character,
-                   overall = FALSE,
-                   caption = "Summary Statistics Regarding Soldier Vaccination Decisions",
-                   footnote = "Discrete Variables = Number (Percent of Total); Continuous Variables = Mean (SD)")
-t1kable(sumstats) %>%
-  kable_styling(latex_options = "hold_position")
+######################
+## MODEL EVALUATION ##
+######################
 
 #Regression Output
 stargazer(log_total_clust, step_model_clust, log_tree_clust,
